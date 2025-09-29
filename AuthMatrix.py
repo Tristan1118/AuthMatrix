@@ -215,6 +215,17 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
                     selfExtender._selectedColumn = -1
                     selfExtender._chainTable.redrawTable()
 
+        class actionToggleWhitelistChain(ActionListener):
+            def actionPerformed(self,e):
+                if selfExtender._selectedRow >= 0:
+                    if selfExtender._selectedRow not in selfExtender._chainTable.getSelectedRows():
+                        chainArray = [selfExtender._db.getChainByRow(selfExtender._selectedRow)]
+                    else:
+                        chainArray = [selfExtender._db.getChainByRow(rowNum) for rowNum in selfExtender._chainTable.getSelectedRows()]
+                    for chainEntry in chainArray:
+                        chainEntry.toggleWhitelist()
+                    selfExtender._selectedColumn = -1
+                    selfExtender._chainTable.redrawTable()
 
 
         class actionRemoveMessage(ActionListener):
@@ -431,6 +442,9 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
         chainRemove = JMenuItem("Remove Chain(s)")
         chainRemove.addActionListener(actionRemoveChain())
         chainPopup.add(chainRemove)
+        chainToggleWhitelist = JMenuItem("Toggle Whitelist/Blacklist Mode for Chain(s)")
+        chainToggleWhitelist.addActionListener(actionToggleWhitelistChain())
+        chainPopup.add(chainToggleWhitelist)
 
 
         # request tabs added to this tab on click in message table
@@ -953,7 +967,12 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
                 for chainIndex in self._db.getActiveChainIndexes():
                     # Run any dependencies first
                     chainEntry = self._db.arrayOfChains[chainIndex]
-                    if (messageIndex in chainEntry.getToIDRange() 
+                    chainEntryIDRange = chainEntry.getToIDRange()
+                    if chainEntry.isWhitelist():
+                        messageIndexInChainDestination = messageIndex in chainEntryIDRange
+                    else:
+                        messageIndexInChainDestination = messageIndex not in chainEntryIDRange
+                    if (messageIndexInChainDestination
                         and chainEntry.isEnabled() 
                         and str(chainEntry._fromID).isdigit() 
                         and int(chainEntry._fromID) >= 0):
@@ -1015,8 +1034,14 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
                 # toValue = SV, toRegex = toRegex
                 for chain in [self._db.arrayOfChains[i] for i in self._db.getActiveChainIndexes()]:
                     svName = chain.getSVName()
+                    chainIDRange = chain.getToIDRange()
+                    if chain.isWhitelist():
+                        messageIndexInChainDestination = messageIndex in chainIDRange
+                    else:
+                        messageIndexInChainDestination = messageIndex not in chainIDRange
+
                     # If the Chain Source exists, and this message is affected, and the chain is enabled
-                    if svName and messageIndex in chain.getToIDRange() and chain.isEnabled():
+                    if svName and messageIndexInChainDestination and chain.isEnabled():
                         # get toValue for correct source
                         sourceUser = chain._sourceUser if chain._sourceUser>=0 else userIndex
                         # Check that sourceUser is active
@@ -1270,7 +1295,7 @@ class MatrixDB():
         # NOTE: consider moving these constants to a different class
         self.STATIC_USER_TABLE_COLUMN_COUNT = 2
         self.STATIC_MESSAGE_TABLE_COLUMN_COUNT = 3
-        self.STATIC_CHAIN_TABLE_COLUMN_COUNT = 7
+        self.STATIC_CHAIN_TABLE_COLUMN_COUNT = 8
         self.LOAD_TIMEOUT = 10.0
         self.BURP_ORANGE = Color(0xff6633)
 
@@ -1679,7 +1704,8 @@ class MatrixDB():
                         deleted = deleted,
                         sourceUser = -1 if "sourceUser" not in chainEntry else chainEntry["sourceUser"],
                         enabled = True if "enabled" not in chainEntry else chainEntry["enabled"],
-                        transformers = [] if "transformers" not in chainEntry else chainEntry["transformers"]
+                        transformers = [] if "transformers" not in chainEntry else chainEntry["transformers"],
+                        whitelist = True if "whitelist" not in chainEntry else chainEntry["whitelist"]
                         ))
         
         except:
@@ -1851,7 +1877,8 @@ class MatrixDB():
                     "fromEnd":chainEntry._fromEnd if not deleted else None,
                     "toStart":chainEntry._toStart if not deleted else None,
                     "toEnd":chainEntry._toEnd if not deleted else None,
-                    "transformers":chainEntry._transformers if not deleted else []
+                    "transformers":chainEntry._transformers if not deleted else [],
+                    "whitelist":chainEntry._whitelist if not deleted else None
                 })
 
         stateDict["arrayOfChainSources"] = []
@@ -2434,6 +2461,8 @@ class ChainTableModel(AbstractTableModel):
             return "Use Values From:"
         elif columnIndex == 6:
             return "Transformers"
+        elif columnIndex == 7:
+            return "Whitelist/Blacklist Destination"
         return ""
 
     def getValueAt(self, rowIndex, columnIndex):
@@ -2474,6 +2503,9 @@ class ChainTableModel(AbstractTableModel):
                 for transformer in chainEntry._transformers:
                     ret = transformer+"("+ret+")"
                 return "" if ret == "x" else ret
+            elif columnIndex == 7:
+                ret = "Whitelist" if chainEntry._whitelist else "Blacklist"
+                return ret
         return ""
 
     def addRow(self, row):
@@ -2937,7 +2969,7 @@ class ChainEntry:
 
     TransformerList = ["base64","url","hex","sha1","sha256","sha512","md5"]
     
-    def __init__(self, index, tableRow, name="", fromID="", fromRegex="", toID="", toRegex="", deleted=False, sourceUser=-1, enabled=True, transformers=[]):
+    def __init__(self, index, tableRow, name="", fromID="", fromRegex="", toID="", toRegex="", deleted=False, sourceUser=-1, enabled=True, transformers=[], whitelist=True):
         self._index = index
         self._fromID = fromID
         self._fromRegex = fromRegex
@@ -2953,6 +2985,7 @@ class ChainEntry:
         self._toEnd = ""
         self._enabled = enabled
         self._transformers = transformers[:] 
+        self._whitelist = whitelist
 
         return
 
@@ -3061,6 +3094,12 @@ class ChainEntry:
             traceback.print_exc(file=callbacks.getStderr())
             return value
         return ret
+
+    def isWhitelist(self):
+        return self._whitelist
+
+    def toggleWhitelist(self):
+        self._whitelist = not self._whitelist
 
 
 
