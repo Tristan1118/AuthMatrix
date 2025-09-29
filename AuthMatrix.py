@@ -567,7 +567,8 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
         def addRequestsToTab(e):
             for messageInfo in messages:
                 requestInfo = self._helpers.analyzeRequest(messageInfo)
-                name = str(requestInfo.getMethod()).ljust(8) + requestInfo.getUrl().getPath()
+                namePrompted = JOptionPane.showInputDialog(self._splitpane, "Enter request name:")
+                name = namePrompted or str(requestInfo.getMethod()).ljust(8) + requestInfo.getUrl().getPath()
                 # Grab regex from response
                 regex = "^HTTP/1\\.1 200 OK"
                 response = messageInfo.getResponse()
