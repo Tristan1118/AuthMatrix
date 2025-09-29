@@ -582,6 +582,16 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
             self._messageTable.redrawTable()
             self._chainTable.redrawTable()
             self.highlightTab()
+        
+        def addRequestsToTabMultiple(e):
+            countStr = JOptionPane.showInputDialog(self._splitpane, "Enter Number:")
+            try:
+                count = int(countStr) if countStr is not None else 0
+            except ValueError:
+                count = 0
+
+            for _ in range(count):
+                addRequestsToTab(e)
 
 
         class UserCookiesActionListener(ActionListener):
@@ -623,6 +633,8 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
 
         if valid:
             menuItem = JMenuItem("Send request(s) to AuthMatrix", actionPerformed=addRequestsToTab);
+            ret.append(menuItem)
+            menuItem = JMenuItem("Send request(s) to AuthMatrix X times", actionPerformed=addRequestsToTabMultiple);
             ret.append(menuItem)
 
             if len(messages)==1:
