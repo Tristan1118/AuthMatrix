@@ -468,6 +468,7 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
         self._newStaticValueButton =  JButton("New Chain Source", actionPerformed=self.newStaticValueClick)
         self._saveButton = JButton("Save", actionPerformed=self.saveClick)
         self._loadButton = JButton("Load", actionPerformed=self.loadClick)
+        self._pasteButton = JButton("Paste", actionPerformed=self.pasteClick)
         self._clearButton = JButton("Clear", actionPerformed=self.clearClick)
 
         buttons.add(self._runButton)
@@ -489,6 +490,7 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
         buttons.add(separator3)
         buttons.add(self._saveButton)
         buttons.add(self._loadButton)
+        buttons.add(self._pasteButton)
         buttons.add(self._clearButton)
 
         # Top pane
@@ -779,6 +781,14 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
             self._userTable.redrawTable()
             self._messageTable.redrawTable()
             self._chainTable.redrawTable()
+    
+    def pasteClick(self, e):
+        userInput = JOptionPane.showInputDialog(self._splitpane, "Input (partial) state:")
+        if userInput:
+            self._db.loadJson(userInput,self)
+            self._userTable.redrawTable()
+            self._messageTable.redrawTable()
+            self._chainTable.redrawTable()
 
     def clearClick(self,e):
         result = JOptionPane.showConfirmDialog(self._splitpane, "Clear AuthMatrix Configuration?", "Clear Config", JOptionPane.YES_NO_OPTION)
@@ -933,6 +943,7 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
         self._newStaticValueButton.setEnabled(not running)
         self._saveButton.setEnabled(not running)
         self._loadButton.setEnabled(not running)
+        self._pasteButton.setEnabled(not running)
         self._clearButton.setEnabled(not running)
         self._cancelButton.setEnabled(running)
 
@@ -1647,10 +1658,20 @@ class MatrixDB():
                         enabled = True if "enabled" not in userEntry else userEntry["enabled"]
                         ))
     
-                # Update Static Values
-                keyword = "arrayOfChainSources" if version >= "0.8" else "arrayOfSVs"
-                if keyword in stateDict:
-                    for svEntry in stateDict[keyword]:
+            # Update Static Values
+            chainSourcekeyword = "arrayOfChainSources" if version >= "0.8" else "arrayOfSVs"
+            if chainSourcekeyword in stateDict:
+                for svEntry in stateDict[chainSourcekeyword]:
+                    # Check if the chain source is already loaded and replace, or add if it doesn't exist
+                    svEntryExists = False
+                    for existingSVEntry in self.arrayOfSVs:
+                        if existingSVEntry.getName() == svEntry["name"]:
+                            svEntryExists = True
+                            for userIndex in svEntry["userValues"].keys():
+                                userIndexInt = int(userIndex)
+                                if userIndexInt in self.getActiveUserIndexes():
+                                    existingSVEntry.setValueForUserIndex(userIndexInt, svEntry["userValues"][userIndex])
+                    if not svEntryExists:
                         # If the index does not match an active users, do not include it
                         self.arrayOfSVs.add(SVEntry(
                             svEntry["name"],
@@ -3128,6 +3149,9 @@ class SVEntry:
         if userIndex in self._userValues:
             return self._userValues[userIndex]
         return ""
+    
+    def getName(self):
+        return self._name
 
 
 
